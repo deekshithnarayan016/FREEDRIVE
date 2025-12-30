@@ -1,5 +1,5 @@
-flask
-flask-cors
+Flask
+gunicorn
 python-dotenv
 azure-storage-blob
-gunicorn
+flask-cors
