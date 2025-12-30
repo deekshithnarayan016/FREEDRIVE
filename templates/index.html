@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FREEDRIVE</title>
+
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: #f4f6fb;
+            animation: fadeIn 0.6s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            padding: 25px 40px;
+            color: white;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h2 {
+            margin: 0;
+            font-weight: 600;
+        }
+
+        header .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        header p {
+            margin: 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .logout-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s, transform 0.2s;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.35);
+            transform: translateY(-1px);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .upload-card {
+            background: white;
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+            animation: slideUp 0.6s ease;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 18px rgba(0,0,0,0.2);
+        }
+
+        .table-card {
+            background: white;
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f0f2ff;
+            text-align: left;
+            padding: 10px;
+        }
+
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h2>FREEDRIVE</h2>
+    <div class="user-info">
+        <p>Welcome, <strong>{{ user }}</strong> 👋</p>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+</header>
+
+<div class="container">
+
+    <div class="upload-card">
+        <h3>Upload File</h3>
+        <form id="uploadForm">
+            <input type="file" id="file" required />
+            <br><br>
+            <button type="submit">Upload</button>
+        </form>
+    </div>
+
+    <div class="table-card">
+        <h3>Your Files</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>File Name</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="fileTableBody"></tbody>
+        </table>
+    </div>
+
+</div>
+
+<script>
+    async function logout() {
+        window.location.href = "/logout";
+    }
+
+    document.getElementById("uploadForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const file = document.getElementById("file").files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const res = await fetch("/upload", {
+            method: "POST",
+            body: formData
+        });
+
+        if (res.ok) loadFiles();
+        else alert("Upload failed");
+    });
+
+    async function loadFiles() {
+        const res = await fetch("/files");
+        const files = await res.json();
+
+        const table = document.getElementById("fileTableBody");
+        table.innerHTML = "";
+
+        files.forEach(file => {
+            table.innerHTML += `
+                <tr>
+                    <td>${file}</td>
+                    <td>
+                        <button onclick="downloadFile('${file}')">Download</button>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    async function downloadFile(file) {
+        const res = await fetch(`/download?blob=${file}`);
+        const data = await res.json();
+        window.open(data.url, "_blank");
+    }
+
+    loadFiles();
+</script>
+
+</body>
+</html>
