@@ -125,4 +125,4 @@ def download():
     return jsonify({"url": get_download_url(blob)})
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=8000)
