@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, session, jsonify
-from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 from storage import upload_file, list_files, get_download_url
 import sqlite3
 import os
@@ -9,15 +9,19 @@ import os
 # APP SETUP
 # -----------------------------
 app = Flask(__name__)
-CORS(app)
+print("🚀 Flask app started successfully")
 
-# ✅ Secret key from environment (Azure-safe)
+# ✅ IMPORTANT for Azure reverse proxy
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+# ✅ Secret key (from Azure App Settings)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
 
-# ✅ Session config (important for Azure HTTPS)
+# ✅ Session settings for HTTPS (Azure-safe)
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=True,   # REQUIRED on Azure
 )
 
 # -----------------------------
@@ -45,9 +49,11 @@ init_db()
 # -----------------------------
 @app.route("/")
 def login_page():
+    print("📥 GET /")
     if "user" in session:
         return redirect("/dashboard")
     return render_template("login.html")
+
 
 # -----------------------------
 # SIGNUP
