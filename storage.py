@@ -1,59 +1,58 @@
 import os
-from datetime import datetime, timedelta
-
-from dotenv import load_dotenv
-from azure.storage.blob import (
-    BlobServiceClient,
-    generate_blob_sas,
-    BlobSasPermissions
-)
+from azure.storage.blob import BlobServiceClient
 
 # -----------------------------
-# Load environment variables
+# Environment variables
 # -----------------------------
-load_dotenv()
-
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 CONTAINER_NAME = os.getenv("CONTAINER_NAME")
-AZURE_ACCOUNT_NAME = os.getenv("AZURE_ACCOUNT_NAME")
-AZURE_ACCOUNT_KEY = os.getenv("AZURE_ACCOUNT_KEY")
 
-# Validate env variables
-if not all([
-    AZURE_STORAGE_CONNECTION_STRING,
-    CONTAINER_NAME,
-    AZURE_ACCOUNT_NAME,
-    AZURE_ACCOUNT_KEY
-]):
-    raise EnvironmentError("One or more Azure environment variables are missing")
+# Log instead of crashing (Azure-safe)
+if not AZURE_STORAGE_CONNECTION_STRING:
+    print("⚠️ AZURE_STORAGE_CONNECTION_STRING is missing")
+
+if not CONTAINER_NAME:
+    print("⚠️ CONTAINER_NAME is missing")
 
 # -----------------------------
 # Azure Blob Clients
 # -----------------------------
-blob_service_client = BlobServiceClient.from_connection_string(
-    AZURE_STORAGE_CONNECTION_STRING
-)
+blob_service_client = None
+container_client = None
 
-container_client = blob_service_client.get_container_client(CONTAINER_NAME)
+if AZURE_STORAGE_CONNECTION_STRING and CONTAINER_NAME:
+    try:
+        blob_service_client = BlobServiceClient.from_connection_string(
+            AZURE_STORAGE_CONNECTION_STRING
+        )
 
-# Create container if it does not exist
-try:
-    container_client.create_container()
-except Exception:
-    pass  # container already exists
+        container_client = blob_service_client.get_container_client(
+            CONTAINER_NAME
+        )
+
+        # Create container if it doesn't exist
+        try:
+            container_client.create_container()
+        except Exception:
+            pass
+
+        print("✅ Azure Blob Storage connected")
+
+    except Exception as e:
+        print("❌ Azure Blob initialization failed:", e)
 
 # -----------------------------
 # Upload File
 # -----------------------------
 def upload_file(file, user: str) -> str:
-    """
-    Upload a file to Azure Blob Storage under user-specific folder.
-    """
-    blob_name = f"users/{user}/{file.filename}"
+    if not container_client:
+        raise RuntimeError("Storage not initialized")
 
-    container_client.upload_blob(
-        name=blob_name,
-        data=file.stream,
+    blob_name = f"users/{user}/{file.filename}"
+    blob_client = container_client.get_blob_client(blob_name)
+
+    blob_client.upload_blob(
+        file.stream,
         overwrite=True
     )
 
@@ -63,40 +62,18 @@ def upload_file(file, user: str) -> str:
 # List Files
 # -----------------------------
 def list_files(user: str):
-    """
-    List all files for a given user.
-    """
+    if not container_client:
+        return []
+
     prefix = f"users/{user}/"
-    return container_client.list_blobs(
-        name_starts_with=prefix
-    )
+    return container_client.list_blobs(name_starts_with=prefix)
 
 # -----------------------------
-# Generate SAS Token
-# -----------------------------
-def generate_sas(blob_name: str) -> str:
-    """
-    Generate a short-lived SAS token for secure read access.
-    """
-    return generate_blob_sas(
-        account_name=AZURE_ACCOUNT_NAME,
-        container_name=CONTAINER_NAME,
-        blob_name=blob_name,
-        account_key=AZURE_ACCOUNT_KEY,
-        permission=BlobSasPermissions(read=True),
-        expiry=datetime.utcnow() + timedelta(minutes=5)
-    )
-
-# -----------------------------
-# Generate Download URL
+# Download URL
 # -----------------------------
 def get_download_url(blob_name: str) -> str:
-    """
-    Generate a full download URL with SAS token.
-    """
-    sas_token = generate_sas(blob_name)
+    if not container_client:
+        raise RuntimeError("Storage not initialized")
 
-    return (
-        f"https://{AZURE_ACCOUNT_NAME}.blob.core.windows.net/"
-        f"{CONTAINER_NAME}/{blob_name}?{sas_token}"
-    )
+    blob_client = container_client.get_blob_client(blob_name)
+    return blob_client.url
