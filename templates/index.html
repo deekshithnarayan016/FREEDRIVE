@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>FREEDRIVE</title>
 
-    <!-- Google Font -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;700&display=swap" rel="stylesheet">
 
     <style>
@@ -17,55 +16,24 @@
             margin: 0;
             min-height: 100vh;
             background: #f4f6fb;
-            animation: fadeIn 0.6s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to   { opacity: 1; }
         }
 
         header {
             background: linear-gradient(135deg, #667eea, #764ba2);
             padding: 25px 40px;
             color: white;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        header h2 {
-            margin: 0;
-            font-weight: 600;
-        }
-
-        header .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        header p {
-            margin: 0;
-            font-size: 14px;
-            opacity: 0.9;
-        }
-
-        .logout-btn {
-            padding: 8px 16px;
+        header button {
+            background: rgba(255,255,255,0.2);
             border: none;
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.2);
             color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 13px;
-            transition: background 0.2s, transform 0.2s;
-        }
-
-        .logout-btn:hover {
-            background: rgba(255, 255, 255, 0.35);
-            transform: translateY(-1px);
         }
 
         .container {
@@ -74,38 +42,70 @@
             padding: 0 20px;
         }
 
-        .upload-card {
+        /* ===== NEW BUTTON ===== */
+        .new-wrapper {
+            position: relative;
+            margin-bottom: 30px;
+        }
+
+        .new-btn {
             background: white;
-            padding: 25px;
-            border-radius: 16px;
-            box-shadow: 0 12px 30px rgba(0,0,0,0.08);
-            animation: slideUp 0.6s ease;
-        }
-
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-
-        button {
-            padding: 10px 20px;
+            border-radius: 999px;
+            padding: 12px 22px;
             border: none;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
+            font-size: 16px;
             cursor: pointer;
-            font-size: 14px;
-            transition: transform 0.2s, box-shadow 0.2s;
+
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+
+            box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+            color: #333;
         }
 
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 18px rgba(0,0,0,0.2);
+        .new-btn:hover {
+            background: #f1f3f4;
         }
 
+        .new-btn .plus {
+            font-size: 22px;
+            font-weight: bold;
+            color: #5f6368;
+        }
+
+        .new-btn .text {
+            font-weight: 500;
+        }
+
+        .new-menu {
+            position: absolute;
+            top: 60px;
+            left: 0;
+            width: 220px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            overflow: hidden;
+            z-index: 1000;
+        }
+
+        .menu-item {
+            padding: 14px 16px;
+            cursor: pointer;
+        }
+
+        .menu-item:hover {
+            background: #f1f3f4;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* ===== FILE TABLE ===== */
         .table-card {
             background: white;
-            margin-top: 30px;
             padding: 20px;
             border-radius: 16px;
             box-shadow: 0 12px 30px rgba(0,0,0,0.08);
@@ -118,13 +118,22 @@
 
         th {
             background: #f0f2ff;
-            text-align: left;
             padding: 10px;
+            text-align: left;
         }
 
         td {
             padding: 10px;
             border-bottom: 1px solid #eee;
+        }
+
+        .action-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -133,29 +142,35 @@
 
 <header>
     <h2>FREEDRIVE</h2>
-    <div class="user-info">
-        <p>Welcome, <strong>{{ user }}</strong> 👋</p>
-        <button class="logout-btn" onclick="logout()">Logout</button>
-    </div>
+    <button onclick="logout()">Logout</button>
 </header>
 
 <div class="container">
 
-    <div class="upload-card">
-        <h3>Upload File</h3>
-        <form id="uploadForm">
-            <input type="file" id="file" required />
-            <br><br>
-            <button type="submit">Upload</button>
-        </form>
+    <!-- NEW BUTTON -->
+    <div class="new-wrapper">
+        <button class="new-btn" id="newBtn">
+            <span class="plus">+</span>
+            <span class="text">New</span>
+        </button>
+
+        <div class="new-menu hidden" id="newMenu">
+            <div class="menu-item" onclick="createFolder()">📁 New folder</div>
+            <div class="menu-item" onclick="fileInput.click()">⬆️ File upload</div>
+            <div class="menu-item" onclick="folderInput.click()">⬆️ Folder upload</div>
+        </div>
+
+        <input type="file" id="fileInput" hidden onchange="uploadFile(this)">
+        <input type="file" id="folderInput" hidden webkitdirectory multiple onchange="uploadFolder(this)">
     </div>
 
+    <!-- FILE LIST -->
     <div class="table-card">
         <h3>Your Files</h3>
         <table>
             <thead>
                 <tr>
-                    <th>File Name</th>
+                    <th>Name</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -166,54 +181,102 @@
 </div>
 
 <script>
-    async function logout() {
-        window.location.href = "/logout";
-    }
+const newBtn = document.getElementById("newBtn");
+const newMenu = document.getElementById("newMenu");
+const fileInput = document.getElementById("fileInput");
+const folderInput = document.getElementById("folderInput");
 
-    document.getElementById("uploadForm").addEventListener("submit", async (e) => {
-        e.preventDefault();
+/* Toggle menu */
+newBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    newMenu.classList.toggle("hidden");
+});
 
-        const file = document.getElementById("file").files[0];
-        if (!file) return;
+/* Close menu on outside click */
+document.addEventListener("click", () => {
+    newMenu.classList.add("hidden");
+});
 
+/* Logout → login.html */
+function logout() {
+    window.location.href = "/";
+}
+
+/* -------- FILE UPLOAD -------- */
+async function uploadFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    await fetch("/upload", { method: "POST", body: formData });
+    input.value = "";
+    loadFiles();
+}
+
+/* -------- FOLDER UPLOAD -------- */
+async function uploadFolder(input) {
+    const files = input.files;
+
+    for (let file of files) {
         const formData = new FormData();
         formData.append("file", file);
+        formData.append("path", file.webkitRelativePath);
 
-        const res = await fetch("/upload", {
+        await fetch("/upload", {
             method: "POST",
             body: formData
         });
-
-        if (res.ok) loadFiles();
-        else alert("Upload failed");
-    });
-
-    async function loadFiles() {
-        const res = await fetch("/files");
-        const files = await res.json();
-
-        const table = document.getElementById("fileTableBody");
-        table.innerHTML = "";
-
-        files.forEach(file => {
-            table.innerHTML += `
-                <tr>
-                    <td>${file}</td>
-                    <td>
-                        <button onclick="downloadFile('${file}')">Download</button>
-                    </td>
-                </tr>
-            `;
-        });
     }
 
-    async function downloadFile(file) {
-        const res = await fetch(`/download?blob=${file}`);
-        const data = await res.json();
-        window.open(data.url, "_blank");
-    }
-
+    input.value = "";
     loadFiles();
+}
+
+/* -------- CREATE FOLDER -------- */
+async function createFolder() {
+    const folder = prompt("Folder name");
+    if (!folder) return;
+
+    const formData = new FormData();
+    formData.append("file", new Blob([""], { type: "text/plain" }), ".keep");
+    formData.append("path", `${folder}/.keep`);
+
+    await fetch("/upload", { method: "POST", body: formData });
+    loadFiles();
+}
+
+/* -------- LOAD FILES -------- */
+async function loadFiles() {
+    const res = await fetch("/files");
+    const files = await res.json();
+
+    const table = document.getElementById("fileTableBody");
+    table.innerHTML = "";
+
+    files.forEach(file => {
+        table.innerHTML += `
+            <tr>
+                <td>${file}</td>
+                <td>
+                    <button class="action-btn" onclick="downloadFile('${file}')">
+                        Download
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+/* -------- DOWNLOAD -------- */
+async function downloadFile(file) {
+    const res = await fetch(`/download?blob=${file}`);
+    const data = await res.json();
+    window.open(data.url, "_blank");
+}
+
+loadFiles();
 </script>
 
 </body>

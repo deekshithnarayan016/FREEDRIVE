@@ -22,7 +22,6 @@ body {
     flex-direction: column;
 }
 
-/* 🔥 Welcome Heading */
 .welcome-title {
     color: white;
     font-size: 32px;
@@ -32,14 +31,8 @@ body {
 }
 
 @keyframes fadeDown {
-    from {
-        opacity: 0;
-        transform: translateY(-20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(-20px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .auth-box {
@@ -48,18 +41,6 @@ body {
     padding: 30px;
     border-radius: 18px;
     box-shadow: 0 20px 40px rgba(0,0,0,0.25);
-    animation: fadeSlide 0.7s ease;
-}
-
-@keyframes fadeSlide {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
 }
 
 .auth-box h2 {
@@ -85,11 +66,6 @@ button {
     color: white;
     font-size: 15px;
     cursor: pointer;
-    transition: transform 0.2s;
-}
-
-button:hover {
-    transform: translateY(-2px);
 }
 
 .toggle {
@@ -103,20 +79,36 @@ button:hover {
     cursor: pointer;
     font-weight: 500;
 }
+
+.forgot {
+    text-align: right;
+    font-size: 13px;
+    margin-top: 6px;
+}
+
+.forgot span {
+    color: #667eea;
+    cursor: pointer;
+}
 </style>
 </head>
 
 <body>
 
-<!-- 🌟 New Welcome Heading -->
 <h1 class="welcome-title">Welcome to FREEDRIVE 🤩</h1>
 
 <div class="auth-box">
     <h2 id="title">Login</h2>
 
     <form id="authForm">
-        <input type="text" id="username" placeholder="Username" required>
+        <!-- EMAIL instead of username -->
+        <input type="email" id="email" placeholder="Email address" required>
         <input type="password" id="password" placeholder="Password" required>
+
+        <div class="forgot">
+            <span onclick="forgotPassword()">Forgot password?</span>
+        </div>
+
         <button type="submit" id="submitBtn">Login</button>
     </form>
 
@@ -145,20 +137,15 @@ function toggleMode() {
 document.getElementById("authForm").addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const username = document.getElementById("username").value.trim();
+    const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value;
-
-    if (!username || !password) {
-        alert("Please enter username and password");
-        return;
-    }
 
     const endpoint = isLogin ? "/login" : "/signup";
 
     const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username: email, password })
     });
 
     const data = await response.json();
@@ -169,6 +156,25 @@ document.getElementById("authForm").addEventListener("submit", async (e) => {
         alert(data.error || "Authentication failed");
     }
 });
+
+/* -------- FORGOT PASSWORD -------- */
+async function forgotPassword() {
+    const email = document.getElementById("email").value.trim();
+
+    if (!email) {
+        alert("Please enter your email first");
+        return;
+    }
+
+    const res = await fetch("/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+    });
+
+    const data = await res.json();
+    alert(data.message || "If this email exists, a reset link was sent.");
+}
 </script>
 
 </body>

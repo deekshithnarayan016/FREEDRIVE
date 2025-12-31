@@ -4,6 +4,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from storage import upload_file, list_files, get_download_url
 import sqlite3
 import os
+import re
 
 # -----------------------------
 # APP SETUP
@@ -11,17 +12,17 @@ import os
 app = Flask(__name__)
 print("🚀 Flask app started successfully")
 
-# ✅ IMPORTANT for Azure reverse proxy
+# Azure reverse proxy fix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# ✅ Secret key (from Azure App Settings)
+# Secret key from Azure App Settings
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
 
-# ✅ Session settings for HTTPS (Azure-safe)
+# Secure session cookies (Azure HTTPS)
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=True,   # REQUIRED on Azure
+    SESSION_COOKIE_SECURE=True,
 )
 
 # -----------------------------
@@ -35,7 +36,7 @@ def init_db():
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
+            email TEXT PRIMARY KEY,
             password TEXT NOT NULL
         )
     """)
@@ -45,15 +46,21 @@ def init_db():
 init_db()
 
 # -----------------------------
+# HELPERS
+# -----------------------------
+EMAIL_REGEX = r"[^@]+@[^@]+\.[^@]+"
+
+def is_valid_email(email: str) -> bool:
+    return re.match(EMAIL_REGEX, email) is not None
+
+# -----------------------------
 # LOGIN PAGE
 # -----------------------------
 @app.route("/")
 def login_page():
-    print("📥 GET /")
     if "user" in session:
         return redirect("/dashboard")
     return render_template("login.html")
-
 
 # -----------------------------
 # SIGNUP
@@ -61,24 +68,27 @@ def login_page():
 @app.route("/signup", methods=["POST"])
 def signup():
     data = request.get_json()
-    username = data.get("username")
+    email = data.get("username")
     password = data.get("password")
 
-    if not username or not password:
+    if not email or not password:
         return jsonify({"success": False, "error": "Missing fields"})
+
+    if not is_valid_email(email):
+        return jsonify({"success": False, "error": "Invalid email format"})
 
     hashed_pw = generate_password_hash(password)
 
     try:
         conn = sqlite3.connect(DB)
         cur = conn.cursor()
-        cur.execute("INSERT INTO users VALUES (?, ?)", (username, hashed_pw))
+        cur.execute("INSERT INTO users VALUES (?, ?)", (email, hashed_pw))
         conn.commit()
         conn.close()
     except sqlite3.IntegrityError:
-        return jsonify({"success": False, "error": "User already exists"})
+        return jsonify({"success": False, "error": "Email already registered"})
 
-    session["user"] = username
+    session["user"] = email
     return jsonify({"success": True})
 
 # -----------------------------
@@ -87,20 +97,45 @@ def signup():
 @app.route("/login", methods=["POST"])
 def login():
     data = request.get_json()
-    username = data.get("username")
+    email = data.get("username")
     password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"success": False, "error": "Missing fields"})
 
     conn = sqlite3.connect(DB)
     cur = conn.cursor()
-    cur.execute("SELECT password FROM users WHERE username=?", (username,))
+    cur.execute("SELECT password FROM users WHERE email=?", (email,))
     row = cur.fetchone()
     conn.close()
 
     if row and check_password_hash(row[0], password):
-        session["user"] = username
+        session["user"] = email
         return jsonify({"success": True})
 
     return jsonify({"success": False, "error": "Invalid credentials"})
+
+# -----------------------------
+# FORGOT PASSWORD (SAFE STUB)
+# -----------------------------
+@app.route("/forgot-password", methods=["POST"])
+def forgot_password():
+    """
+    SECURITY NOTE:
+    - Never reveal if email exists
+    - Always return same response
+    """
+    data = request.get_json()
+    email = data.get("email")
+
+    # TODO:
+    # 1. Check if email exists
+    # 2. Generate secure token
+    # 3. Send reset email (SendGrid / SMTP)
+
+    return jsonify({
+        "message": "If this email exists, a password reset link was sent."
+    })
 
 # -----------------------------
 # DASHBOARD
@@ -120,7 +155,7 @@ def logout():
     return redirect("/")
 
 # -----------------------------
-# UPLOAD
+# UPLOAD (FILES + FOLDERS)
 # -----------------------------
 @app.route("/upload", methods=["POST"])
 def upload():
@@ -128,10 +163,17 @@ def upload():
         return jsonify({"error": "Unauthorized"}), 401
 
     file = request.files.get("file")
+    path = request.form.get("path")  # folder support
+
     if not file:
         return jsonify({"error": "No file"}), 400
 
-    upload_file(file, session["user"])
+    upload_file(
+        file=file,
+        user=session["user"],
+        path=path
+    )
+
     return jsonify({"success": True})
 
 # -----------------------------
@@ -143,7 +185,10 @@ def files():
         return jsonify([])
 
     blobs = list_files(session["user"])
-    return jsonify([b.name.split("/")[-1] for b in blobs])
+    return jsonify([
+        b.name.replace(f"users/{session['user']}/", "")
+        for b in blobs
+    ])
 
 # -----------------------------
 # DOWNLOAD

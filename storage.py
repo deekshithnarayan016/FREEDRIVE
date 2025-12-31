@@ -1,5 +1,10 @@
 import os
-from azure.storage.blob import BlobServiceClient
+from datetime import datetime, timedelta
+from azure.storage.blob import (
+    BlobServiceClient,
+    generate_blob_sas,
+    BlobSasPermissions
+)
 
 # -----------------------------
 # Environment variables
@@ -7,7 +12,6 @@ from azure.storage.blob import BlobServiceClient
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 CONTAINER_NAME = os.getenv("CONTAINER_NAME")
 
-# Log instead of crashing (Azure-safe)
 if not AZURE_STORAGE_CONNECTION_STRING:
     print("⚠️ AZURE_STORAGE_CONNECTION_STRING is missing")
 
@@ -42,13 +46,19 @@ if AZURE_STORAGE_CONNECTION_STRING and CONTAINER_NAME:
         print("❌ Azure Blob initialization failed:", e)
 
 # -----------------------------
-# Upload File
+# Upload File (FILES + FOLDERS)
 # -----------------------------
-def upload_file(file, user: str) -> str:
+def upload_file(file, user: str, path: str | None = None) -> str:
     if not container_client:
         raise RuntimeError("Storage not initialized")
 
-    blob_name = f"users/{user}/{file.filename}"
+    if path:
+        # Normalize folder paths (important for Windows)
+        clean_path = path.replace("\\", "/")
+        blob_name = f"users/{user}/{clean_path}"
+    else:
+        blob_name = f"users/{user}/{file.filename}"
+
     blob_client = container_client.get_blob_client(blob_name)
 
     blob_client.upload_blob(
@@ -69,11 +79,22 @@ def list_files(user: str):
     return container_client.list_blobs(name_starts_with=prefix)
 
 # -----------------------------
-# Download URL
+# Generate Secure Download URL (SAS)
 # -----------------------------
 def get_download_url(blob_name: str) -> str:
-    if not container_client:
+    if not blob_service_client or not container_client:
         raise RuntimeError("Storage not initialized")
 
-    blob_client = container_client.get_blob_client(blob_name)
-    return blob_client.url
+    sas_token = generate_blob_sas(
+        account_name=blob_service_client.account_name,
+        container_name=CONTAINER_NAME,
+        blob_name=blob_name,
+        account_key=blob_service_client.credential.account_key,
+        permission=BlobSasPermissions(read=True),
+        expiry=datetime.utcnow() + timedelta(minutes=5)
+    )
+
+    return (
+        f"https://{blob_service_client.account_name}.blob.core.windows.net/"
+        f"{CONTAINER_NAME}/{blob_name}?{sas_token}"
+    )
