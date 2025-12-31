@@ -12,19 +12,22 @@ from azure.storage.blob import (
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 CONTAINER_NAME = os.getenv("CONTAINER_NAME")
 
-if not AZURE_STORAGE_CONNECTION_STRING:
-    print("⚠️ AZURE_STORAGE_CONNECTION_STRING is missing")
-
-if not CONTAINER_NAME:
-    print("⚠️ CONTAINER_NAME is missing")
-
-# -----------------------------
-# Azure Blob Clients
-# -----------------------------
 blob_service_client = None
 container_client = None
+ACCOUNT_NAME = None
+ACCOUNT_KEY = None
 
-if AZURE_STORAGE_CONNECTION_STRING and CONTAINER_NAME:
+def init_storage():
+    """
+    Initialize Azure Blob Storage safely.
+    Never crash the app if config is missing.
+    """
+    global blob_service_client, container_client, ACCOUNT_NAME, ACCOUNT_KEY
+
+    if not AZURE_STORAGE_CONNECTION_STRING or not CONTAINER_NAME:
+        print("⚠️ Azure Storage env vars not configured")
+        return
+
     try:
         blob_service_client = BlobServiceClient.from_connection_string(
             AZURE_STORAGE_CONNECTION_STRING
@@ -34,16 +37,24 @@ if AZURE_STORAGE_CONNECTION_STRING and CONTAINER_NAME:
             CONTAINER_NAME
         )
 
+        # Extract account details for SAS
+        ACCOUNT_NAME = blob_service_client.account_name
+        ACCOUNT_KEY = blob_service_client.credential.account_key
+
         # Create container if it doesn't exist
         try:
             container_client.create_container()
         except Exception:
             pass
 
-        print("✅ Azure Blob Storage connected")
+        print("✅ Azure Blob Storage initialized")
 
     except Exception as e:
-        print("❌ Azure Blob initialization failed:", e)
+        print("❌ Azure Blob Storage init failed:", e)
+
+
+# Initialize on import (Azure-safe)
+init_storage()
 
 # -----------------------------
 # Upload File (FILES + FOLDERS)
@@ -53,7 +64,7 @@ def upload_file(file, user: str, path: str | None = None) -> str:
         raise RuntimeError("Storage not initialized")
 
     if path:
-        # Normalize folder paths (important for Windows)
+        # Normalize Windows paths
         clean_path = path.replace("\\", "/")
         blob_name = f"users/{user}/{clean_path}"
     else:
@@ -69,7 +80,7 @@ def upload_file(file, user: str, path: str | None = None) -> str:
     return blob_name
 
 # -----------------------------
-# List Files
+# List Files (user-isolated)
 # -----------------------------
 def list_files(user: str):
     if not container_client:
@@ -79,22 +90,22 @@ def list_files(user: str):
     return container_client.list_blobs(name_starts_with=prefix)
 
 # -----------------------------
-# Generate Secure Download URL (SAS)
+# Secure Download URL (SAS)
 # -----------------------------
 def get_download_url(blob_name: str) -> str:
-    if not blob_service_client or not container_client:
-        raise RuntimeError("Storage not initialized")
+    if not ACCOUNT_NAME or not ACCOUNT_KEY:
+        raise RuntimeError("Storage credentials unavailable")
 
     sas_token = generate_blob_sas(
-        account_name=blob_service_client.account_name,
+        account_name=ACCOUNT_NAME,
         container_name=CONTAINER_NAME,
         blob_name=blob_name,
-        account_key=blob_service_client.credential.account_key,
+        account_key=ACCOUNT_KEY,
         permission=BlobSasPermissions(read=True),
         expiry=datetime.utcnow() + timedelta(minutes=5)
     )
 
     return (
-        f"https://{blob_service_client.account_name}.blob.core.windows.net/"
+        f"https://{ACCOUNT_NAME}.blob.core.windows.net/"
         f"{CONTAINER_NAME}/{blob_name}?{sas_token}"
     )

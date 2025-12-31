@@ -163,18 +163,14 @@ def upload():
         return jsonify({"error": "Unauthorized"}), 401
 
     file = request.files.get("file")
-    path = request.form.get("path")  # folder support
+    path = request.form.get("path")  # 👈 NEW
 
     if not file:
         return jsonify({"error": "No file"}), 400
 
-    upload_file(
-        file=file,
-        user=session["user"],
-        path=path
-    )
-
+    upload_file(file, session["user"], path)
     return jsonify({"success": True})
+
 
 # -----------------------------
 # FILE LIST
