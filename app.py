@@ -221,13 +221,12 @@ def download_folder():
     zip_buffer = io.BytesIO()
 
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-    for blob in list_files(user):
-        if blob.name.startswith(prefix) and not blob.name.endswith(".keep"):
-            rel = blob.name[len(prefix):]
-            zip_path = f"{folder}/{rel}"
-            content = requests.get(get_download_url(blob.name)).content
-            zipf.writestr(zip_path, content)
-
+        for blob in list_files(user):
+            if blob.name.startswith(prefix) and not blob.name.endswith(".keep"):
+                rel = blob.name[len(prefix):]
+                zip_path = f"{folder}/{rel}"
+                content = requests.get(get_download_url(blob.name)).content
+                zipf.writestr(zip_path, content)
 
     zip_buffer.seek(0)
 
