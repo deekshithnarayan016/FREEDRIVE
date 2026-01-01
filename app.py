@@ -38,11 +38,9 @@ def no_cache(response):
 # -----------------------------
 # DATABASE
 # -----------------------------
-BASE_DIR = "/home/site/data"
-os.makedirs(BASE_DIR, exist_ok=True)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(BASE_DIR, "users.db")
-
 
 
 def init_db():
