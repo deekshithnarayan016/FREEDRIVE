@@ -173,14 +173,15 @@ def files():
             continue
 
         relative = name[len(prefix):]
-
-        if not relative or relative.endswith(".keep"):
+        if not relative:
             continue
 
+        # Detect folder from ANY blob inside it (including .keep)
         if "/" in relative:
             folders.add(relative.split("/")[0])
         else:
-            files.append(relative)
+            if relative != ".keep":
+                files.append(relative)
 
     return jsonify({
         "folders": sorted(folders),
