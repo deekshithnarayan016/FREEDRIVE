@@ -69,10 +69,10 @@ def require_login():
 # -----------------------------
 # AUTH
 # -----------------------------
+
+# 🔐 ROOT → ALWAYS LOGIN PAGE
 @app.route("/")
-def login_page():
-    if require_login():
-        return redirect("/dashboard")
+def root():
     return render_template("login.html")
 
 @app.route("/signup", methods=["POST"])
@@ -151,12 +151,12 @@ def upload():
     return jsonify({"success": True})
 
 # -----------------------------
-# LIST FILES + FOLDERS (FIXED)
+# LIST FILES + FOLDERS
 # -----------------------------
 @app.route("/files")
 def files():
     if not require_login():
-        return jsonify({"folders": [], "files": []})
+        return redirect("/")
 
     user = session["user"]
     base = f"users/{user}/"
@@ -176,7 +176,6 @@ def files():
         if not relative:
             continue
 
-        # Detect folder from ANY blob inside it (including .keep)
         if "/" in relative:
             folders.add(relative.split("/")[0])
         else:
@@ -204,7 +203,7 @@ def download_file():
     return jsonify({"url": get_download_url(blob_path)})
 
 # -----------------------------
-# DOWNLOAD FOLDER AS ZIP (FIXED)
+# DOWNLOAD FOLDER AS ZIP
 # -----------------------------
 @app.route("/download-folder")
 def download_folder():
