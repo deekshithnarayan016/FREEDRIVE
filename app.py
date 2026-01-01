@@ -146,7 +146,7 @@ def upload():
         return jsonify({"error": "Unauthorized"}), 401
 
     file = request.files.get("file")
-    path = request.form.get("path")  # optional (folders)
+    path = request.form.get("path")
 
     if not file:
         return jsonify({"error": "No file"}), 400
@@ -155,7 +155,7 @@ def upload():
     return jsonify({"success": True})
 
 # -----------------------------
-# FILE + FOLDER LIST (IMPORTANT)
+# LIST FILES + FOLDERS (CRITICAL)
 # -----------------------------
 @app.route("/files")
 def files():
@@ -164,8 +164,8 @@ def files():
 
     user = session["user"]
     base = f"users/{user}/"
-    path = request.args.get("path", "").strip("/")
 
+    path = request.args.get("path", "").strip("/")
     prefix = base + (path + "/" if path else "")
 
     files = []
@@ -175,7 +175,8 @@ def files():
         if not blob.name.startswith(prefix):
             continue
 
-        rel = blob.name.replace(prefix, "")
+        rel = blob.name.replace(prefix, "", 1)
+
         if not rel or rel.endswith(".keep"):
             continue
 
@@ -185,8 +186,8 @@ def files():
             files.append(rel)
 
     return jsonify({
-        "files": sorted(files),
-        "folders": sorted(folders)
+        "folders": sorted(folders),
+        "files": sorted(files)
     })
 
 # -----------------------------
@@ -212,7 +213,7 @@ def download_folder():
     if not require_login():
         return jsonify({"error": "Unauthorized"}), 401
 
-    folder = request.args.get("folder", "").strip("/")
+    folder = request.args.get("path", "").strip("/")
     if not folder:
         return jsonify({"error": "Missing folder"}), 400
 
@@ -225,10 +226,10 @@ def download_folder():
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
         for blob in list_files(user):
             if blob.name.startswith(prefix) and not blob.name.endswith(".keep"):
-                rel = blob.name.replace(base, "")
+                rel_path = blob.name.replace(base, "", 1)
                 url = get_download_url(blob.name)
                 content = requests.get(url).content
-                zipf.writestr(rel, content)
+                zipf.writestr(rel_path, content)
 
     zip_buffer.seek(0)
 

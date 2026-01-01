@@ -39,7 +39,14 @@ header button {
     padding: 0 20px;
 }
 
-/* NEW BUTTON */
+/* Breadcrumb */
+.breadcrumb {
+    margin-bottom: 15px;
+    color: #555;
+    cursor: pointer;
+}
+
+/* New button */
 .new-wrapper { position: relative; margin-bottom: 30px; }
 
 .new-btn {
@@ -67,10 +74,14 @@ header button {
     z-index: 1000;
 }
 
-.menu-item { padding: 14px 16px; cursor: pointer; }
+.menu-item {
+    padding: 14px 16px;
+    cursor: pointer;
+}
 .menu-item:hover { background: #f1f3f4; }
 .hidden { display: none; }
 
+/* Table */
 .table-card {
     background: white;
     padding: 20px;
@@ -90,12 +101,6 @@ td { padding: 10px; border-bottom: 1px solid #eee; }
     border-radius: 8px;
     cursor: pointer;
 }
-
-.breadcrumb {
-    margin-bottom: 15px;
-    color: #555;
-    cursor: pointer;
-}
 </style>
 </head>
 
@@ -112,6 +117,7 @@ td { padding: 10px; border-bottom: 1px solid #eee; }
 
 <div class="new-wrapper">
     <button class="new-btn" id="newBtn">+ New</button>
+
     <div class="new-menu hidden" id="newMenu">
         <div class="menu-item" onclick="createFolder()">📁 New folder</div>
         <div class="menu-item" onclick="fileInput.click()">⬆️ File upload</div>
@@ -157,28 +163,31 @@ function goRoot() {
     loadFiles();
 }
 
-/* Upload file */
+/* Upload single file */
 async function uploadFile(input) {
     const file = input.files[0];
     if (!file) return;
 
     const fd = new FormData();
     fd.append("file", file);
-    if (currentPath) fd.append("path", `${currentPath}/${file.name}`);
+    fd.append("path", currentPath ? `${currentPath}/${file.name}` : file.name);
 
     await fetch("/upload", { method: "POST", body: fd });
     input.value = "";
     loadFiles();
 }
 
-/* Upload folder */
+/* Upload full folder */
 async function uploadFolder(input) {
     for (let file of input.files) {
         const fd = new FormData();
         fd.append("file", file);
-        fd.append("path", currentPath
+
+        const fullPath = currentPath
             ? `${currentPath}/${file.webkitRelativePath}`
-            : file.webkitRelativePath);
+            : file.webkitRelativePath;
+
+        fd.append("path", fullPath);
 
         await fetch("/upload", { method: "POST", body: fd });
     }
@@ -193,15 +202,18 @@ async function createFolder() {
 
     const fd = new FormData();
     fd.append("file", new Blob([""], { type: "text/plain" }), ".keep");
-    fd.append("path", currentPath
+
+    const folderPath = currentPath
         ? `${currentPath}/${name}/.keep`
-        : `${name}/.keep`);
+        : `${name}/.keep`;
+
+    fd.append("path", folderPath);
 
     await fetch("/upload", { method: "POST", body: fd });
     loadFiles();
 }
 
-/* Load files & folders */
+/* Load files */
 async function loadFiles() {
     const res = await fetch(`/files?path=${currentPath}`);
     const data = await res.json();
@@ -214,9 +226,13 @@ async function loadFiles() {
     data.folders.forEach(folder => {
         table.innerHTML += `
         <tr>
-            <td style="cursor:pointer" onclick="openFolder('${folder}')">📁 ${folder}</td>
+            <td style="cursor:pointer" onclick="openFolder('${folder}')">
+                📁 ${folder}
+            </td>
             <td>
-                <button class="action-btn" onclick="downloadFolder('${folder}')">Download</button>
+                <button class="action-btn" onclick="downloadFolder('${folder}')">
+                    Download
+                </button>
             </td>
         </tr>`;
     });
@@ -226,7 +242,9 @@ async function loadFiles() {
         <tr>
             <td>📄 ${file}</td>
             <td>
-                <button class="action-btn" onclick="downloadFile('${file}')">Download</button>
+                <button class="action-btn" onclick="downloadFile('${file}')">
+                    Download
+                </button>
             </td>
         </tr>`;
     });
@@ -238,11 +256,13 @@ function openFolder(folder) {
 }
 
 function downloadFile(file) {
-    window.open(`/download?blob=${currentPath ? currentPath + "/" : ""}${file}`);
+    const path = currentPath ? `${currentPath}/${file}` : file;
+    window.open(`/download?blob=${path}`);
 }
 
 function downloadFolder(folder) {
-    window.open(`/download-folder?folder=${currentPath ? currentPath + "/" : ""}${folder}`);
+    const path = currentPath ? `${currentPath}/${folder}` : folder;
+    window.open(`/download-folder?path=${path}`);
 }
 
 loadFiles();

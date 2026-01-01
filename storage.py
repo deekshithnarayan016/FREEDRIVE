@@ -46,7 +46,7 @@ def init_storage():
         ACCOUNT_NAME = blob_service_client.account_name
         ACCOUNT_KEY = blob_service_client.credential.account_key
 
-        # Create container if missing
+        # Create container if it does not exist
         try:
             container_client.create_container()
         except Exception:
@@ -63,12 +63,13 @@ init_storage()
 
 
 # -----------------------------
-# Upload File (FILES + FOLDERS)
+# Upload File (Files + Folders)
 # -----------------------------
 def upload_file(file, user: str, path: str | None = None) -> str:
     """
-    Uploads a file.
-    - Supports folders using `path`
+    Uploads a file to Azure Blob Storage.
+
+    - Supports folder uploads via `path`
     - Enforces per-user isolation
     """
     if not container_client:
@@ -82,11 +83,7 @@ def upload_file(file, user: str, path: str | None = None) -> str:
         blob_name = f"users/{user}/{file.filename}"
 
     blob_client = container_client.get_blob_client(blob_name)
-
-    blob_client.upload_blob(
-        file.stream,
-        overwrite=True
-    )
+    blob_client.upload_blob(file.stream, overwrite=True)
 
     return blob_name
 
@@ -96,7 +93,7 @@ def upload_file(file, user: str, path: str | None = None) -> str:
 # -----------------------------
 def list_files(user: str):
     """
-    Returns all blobs for a user (raw blobs).
+    Returns all blobs for a user.
     Folder logic is handled in app.py
     """
     if not container_client:
@@ -138,14 +135,14 @@ def get_download_url(blob_name: str) -> str:
 def zip_folder(user: str, folder: str) -> io.BytesIO:
     """
     Creates a ZIP of all files inside a folder.
-    Used by app.py for folder downloads.
+    Preserves full folder structure.
     """
     if not container_client:
         raise RuntimeError("Storage not initialized")
 
     folder = folder.strip("/")
-
     prefix = f"users/{user}/{folder}/"
+
     zip_buffer = io.BytesIO()
 
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -156,8 +153,8 @@ def zip_folder(user: str, folder: str) -> io.BytesIO:
             blob_client = container_client.get_blob_client(blob.name)
             data = blob_client.download_blob().readall()
 
-            # Preserve folder structure inside ZIP
-            arcname = blob.name.replace(prefix, "")
+            # Preserve structure inside ZIP
+            arcname = blob.name.replace(prefix, "", 1)
             zipf.writestr(arcname, data)
 
     zip_buffer.seek(0)
