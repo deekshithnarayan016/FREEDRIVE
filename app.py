@@ -15,15 +15,21 @@ print("🚀 Flask app started successfully")
 # Azure reverse proxy fix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Secret key from Azure App Settings
+# Secret key (Azure App Settings)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
 
-# Secure session cookies (Azure HTTPS)
+# Secure cookies (Azure HTTPS)
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=True,
 )
+
+# Disable caching for auth pages
+@app.after_request
+def add_no_cache_headers(response):
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 # -----------------------------
 # DATABASE SETUP
@@ -82,7 +88,10 @@ def signup():
     try:
         conn = sqlite3.connect(DB)
         cur = conn.cursor()
-        cur.execute("INSERT INTO users VALUES (?, ?)", (email, hashed_pw))
+        cur.execute(
+            "INSERT INTO users (email, password) VALUES (?, ?)",
+            (email, hashed_pw)
+        )
         conn.commit()
         conn.close()
     except sqlite3.IntegrityError:
@@ -116,23 +125,14 @@ def login():
     return jsonify({"success": False, "error": "Invalid credentials"})
 
 # -----------------------------
-# FORGOT PASSWORD (SAFE STUB)
+# FORGOT PASSWORD (SECURE STUB)
 # -----------------------------
 @app.route("/forgot-password", methods=["POST"])
 def forgot_password():
     """
-    SECURITY NOTE:
+    Security best practice:
     - Never reveal if email exists
-    - Always return same response
     """
-    data = request.get_json()
-    email = data.get("email")
-
-    # TODO:
-    # 1. Check if email exists
-    # 2. Generate secure token
-    # 3. Send reset email (SendGrid / SMTP)
-
     return jsonify({
         "message": "If this email exists, a password reset link was sent."
     })
@@ -163,7 +163,7 @@ def upload():
         return jsonify({"error": "Unauthorized"}), 401
 
     file = request.files.get("file")
-    path = request.form.get("path")  # 👈 NEW
+    path = request.form.get("path")  # folder support
 
     if not file:
         return jsonify({"error": "No file"}), 400
@@ -171,9 +171,8 @@ def upload():
     upload_file(file, session["user"], path)
     return jsonify({"success": True})
 
-
 # -----------------------------
-# FILE LIST
+# FILE LIST (USER ISOLATED)
 # -----------------------------
 @app.route("/files")
 def files():
@@ -184,10 +183,11 @@ def files():
     return jsonify([
         b.name.replace(f"users/{session['user']}/", "")
         for b in blobs
+        if not b.name.endswith(".keep")
     ])
 
 # -----------------------------
-# DOWNLOAD
+# DOWNLOAD (FILE ONLY)
 # -----------------------------
 @app.route("/download")
 def download():
@@ -197,6 +197,10 @@ def download():
     filename = request.args.get("blob")
     if not filename:
         return jsonify({"error": "Missing filename"}), 400
+
+    # Block folder downloads (handled separately later)
+    if filename.endswith("/"):
+        return jsonify({"error": "Folder download not supported yet"}), 400
 
     blob_path = f"users/{session['user']}/{filename}"
     return jsonify({"url": get_download_url(blob_path)})
