@@ -1,10 +1,12 @@
-from flask import Flask, render_template, request, redirect, session, jsonify
+from flask import Flask, render_template, request, redirect, session, jsonify, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from storage import upload_file, list_files, get_download_url
 import sqlite3
 import os
 import re
+import io
+import zipfile
 
 # -----------------------------
 # APP SETUP
@@ -12,27 +14,23 @@ import re
 app = Flask(__name__)
 print("🚀 Flask app started successfully")
 
-# Azure reverse proxy fix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Secret key (Azure App Settings)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
 
-# Secure cookies (Azure HTTPS)
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=True,
 )
 
-# Disable caching for auth pages
 @app.after_request
-def add_no_cache_headers(response):
+def no_cache(response):
     response.headers["Cache-Control"] = "no-store"
     return response
 
 # -----------------------------
-# DATABASE SETUP
+# DATABASE
 # -----------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(BASE_DIR, "users.db")
@@ -56,11 +54,11 @@ init_db()
 # -----------------------------
 EMAIL_REGEX = r"[^@]+@[^@]+\.[^@]+"
 
-def is_valid_email(email: str) -> bool:
-    return re.match(EMAIL_REGEX, email) is not None
+def is_valid_email(email):
+    return re.match(EMAIL_REGEX, email)
 
 # -----------------------------
-# LOGIN PAGE
+# AUTH
 # -----------------------------
 @app.route("/")
 def login_page():
@@ -68,49 +66,34 @@ def login_page():
         return redirect("/dashboard")
     return render_template("login.html")
 
-# -----------------------------
-# SIGNUP
-# -----------------------------
 @app.route("/signup", methods=["POST"])
 def signup():
     data = request.get_json()
     email = data.get("username")
     password = data.get("password")
 
-    if not email or not password:
-        return jsonify({"success": False, "error": "Missing fields"})
+    if not email or not password or not is_valid_email(email):
+        return jsonify({"success": False, "error": "Invalid data"})
 
-    if not is_valid_email(email):
-        return jsonify({"success": False, "error": "Invalid email format"})
-
-    hashed_pw = generate_password_hash(password)
+    hashed = generate_password_hash(password)
 
     try:
         conn = sqlite3.connect(DB)
         cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO users (email, password) VALUES (?, ?)",
-            (email, hashed_pw)
-        )
+        cur.execute("INSERT INTO users VALUES (?,?)", (email, hashed))
         conn.commit()
         conn.close()
     except sqlite3.IntegrityError:
-        return jsonify({"success": False, "error": "Email already registered"})
+        return jsonify({"success": False, "error": "Email exists"})
 
     session["user"] = email
     return jsonify({"success": True})
 
-# -----------------------------
-# LOGIN
-# -----------------------------
 @app.route("/login", methods=["POST"])
 def login():
     data = request.get_json()
     email = data.get("username")
     password = data.get("password")
-
-    if not email or not password:
-        return jsonify({"success": False, "error": "Missing fields"})
 
     conn = sqlite3.connect(DB)
     cur = conn.cursor()
@@ -124,18 +107,10 @@ def login():
 
     return jsonify({"success": False, "error": "Invalid credentials"})
 
-# -----------------------------
-# FORGOT PASSWORD (SECURE STUB)
-# -----------------------------
-@app.route("/forgot-password", methods=["POST"])
-def forgot_password():
-    """
-    Security best practice:
-    - Never reveal if email exists
-    """
-    return jsonify({
-        "message": "If this email exists, a password reset link was sent."
-    })
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/")
 
 # -----------------------------
 # DASHBOARD
@@ -147,15 +122,7 @@ def dashboard():
     return render_template("index.html", user=session["user"])
 
 # -----------------------------
-# LOGOUT
-# -----------------------------
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect("/")
-
-# -----------------------------
-# UPLOAD (FILES + FOLDERS)
+# UPLOAD
 # -----------------------------
 @app.route("/upload", methods=["POST"])
 def upload():
@@ -163,7 +130,7 @@ def upload():
         return jsonify({"error": "Unauthorized"}), 401
 
     file = request.files.get("file")
-    path = request.form.get("path")  # folder support
+    path = request.form.get("path")
 
     if not file:
         return jsonify({"error": "No file"}), 400
@@ -172,7 +139,7 @@ def upload():
     return jsonify({"success": True})
 
 # -----------------------------
-# FILE LIST (USER ISOLATED)
+# FILE LIST
 # -----------------------------
 @app.route("/files")
 def files():
@@ -180,27 +147,70 @@ def files():
         return jsonify([])
 
     blobs = list_files(session["user"])
-    return jsonify([
-        b.name.replace(f"users/{session['user']}/", "")
-        for b in blobs
-        if not b.name.endswith(".keep")
-    ])
+    base = f"users/{session['user']}/"
+
+    items = []
+    seen_folders = set()
+
+    for b in blobs:
+        name = b.name.replace(base, "")
+        if name.endswith(".keep"):
+            continue
+
+        if "/" in name:
+            folder = name.split("/")[0]
+            seen_folders.add(folder)
+        else:
+            items.append(name)
+
+    for folder in seen_folders:
+        items.append(folder + "/")
+
+    return jsonify(sorted(items))
 
 # -----------------------------
-# DOWNLOAD (FILE ONLY)
+# DOWNLOAD FILE OR FOLDER
 # -----------------------------
 @app.route("/download")
 def download():
     if "user" not in session:
         return jsonify({"error": "Unauthorized"}), 401
 
-    filename = request.args.get("blob")
-    if not filename:
-        return jsonify({"error": "Missing filename"}), 400
+    name = request.args.get("blob")
+    if not name:
+        return jsonify({"error": "Missing name"}), 400
 
-    # Block folder downloads (handled separately later)
-    if filename.endswith("/"):
-        return jsonify({"error": "Folder download not supported yet"}), 400
+    user = session["user"]
+    base_path = f"users/{user}/"
 
-    blob_path = f"users/{session['user']}/{filename}"
-    return jsonify({"url": get_download_url(blob_path)})
+    # -------- FILE DOWNLOAD --------
+    if not name.endswith("/"):
+        blob_path = base_path + name
+        return jsonify({"url": get_download_url(blob_path)})
+
+    # -------- FOLDER → ZIP DOWNLOAD --------
+    folder_prefix = base_path + name
+
+    blobs = list_files(user)
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for blob in blobs:
+            if blob.name.startswith(folder_prefix) and not blob.name.endswith(".keep"):
+                relative_path = blob.name.replace(base_path, "")
+                file_url = get_download_url(blob.name)
+
+                # Download blob content
+                import requests
+                content = requests.get(file_url).content
+                zipf.writestr(relative_path, content)
+
+    zip_buffer.seek(0)
+
+    zip_name = name.rstrip("/") + ".zip"
+    return send_file(
+        zip_buffer,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=zip_name
+    )

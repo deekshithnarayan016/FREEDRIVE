@@ -3,3 +3,4 @@ gunicorn
 Werkzeug
 azure-storage-blob
 python-dotenv
+requests
