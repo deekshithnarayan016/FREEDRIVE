@@ -229,7 +229,6 @@ def download_folder():
                 zipf.writestr(zip_path, content)
 
     zip_buffer.seek(0)
-
     return send_file(
         zip_buffer,
         mimetype="application/zip",
