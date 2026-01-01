@@ -253,10 +253,19 @@ function openFolder(folder) {
     loadFiles();
 }
 
-function downloadFile(file) {
+async function downloadFile(file) {
     const path = currentPath ? `${currentPath}/${file}` : file;
-    window.open(`/download?blob=${path}`);
+
+    const res = await fetch(`/download?blob=${encodeURIComponent(path)}`);
+    const data = await res.json();
+
+    if (data.url) {
+        window.open(data.url);
+    } else {
+        alert("Download failed");
+    }
 }
+
 
 function downloadFolder(folder) {
     const path = currentPath ? `${currentPath}/${folder}` : folder;
