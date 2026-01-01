@@ -9,23 +9,18 @@
 <style>
 * { box-sizing: border-box; font-family: 'Poppins', sans-serif; }
 
-body {
-    margin: 0;
-    min-height: 100vh;
-    background: #f4f6fb;
-}
+body { margin: 0; background: #f4f6fb; }
 
 header {
     background: linear-gradient(135deg, #667eea, #764ba2);
-    padding: 25px 40px;
+    padding: 22px 40px;
     color: white;
     display: flex;
     justify-content: space-between;
-    align-items: center;
 }
 
 header button {
-    background: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.25);
     border: none;
     color: white;
     padding: 8px 16px;
@@ -36,7 +31,6 @@ header button {
 .container {
     max-width: 1000px;
     margin: 40px auto;
-    padding: 0 20px;
 }
 
 /* Breadcrumb */
@@ -47,24 +41,20 @@ header button {
 }
 
 /* New button */
-.new-wrapper { position: relative; margin-bottom: 30px; }
+.new-wrapper { position: relative; margin-bottom: 25px; }
 
 .new-btn {
     background: white;
     border-radius: 999px;
     padding: 12px 22px;
     border: none;
-    font-size: 16px;
     cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.15);
 }
 
 .new-menu {
     position: absolute;
-    top: 60px;
+    top: 55px;
     left: 0;
     width: 220px;
     background: white;
@@ -97,8 +87,8 @@ td { padding: 10px; border-bottom: 1px solid #eee; }
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
     border: none;
-    padding: 8px 14px;
-    border-radius: 8px;
+    padding: 6px 12px;
+    border-radius: 6px;
     cursor: pointer;
 }
 </style>
@@ -124,12 +114,12 @@ td { padding: 10px; border-bottom: 1px solid #eee; }
         <div class="menu-item" onclick="folderInput.click()">⬆️ Folder upload</div>
     </div>
 
-    <input type="file" id="fileInput" hidden onchange="uploadFile(this)">
-    <input type="file" id="folderInput" hidden webkitdirectory multiple onchange="uploadFolder(this)">
+    <input type="file" id="fileInput" hidden>
+    <input type="file" id="folderInput" hidden webkitdirectory multiple>
 </div>
 
 <div class="table-card">
-<h3>Your Files</h3>
+<h3>Your Drive</h3>
 <table>
 <thead>
 <tr><th>Name</th><th>Action</th></tr>
@@ -145,6 +135,8 @@ let currentPath = "";
 
 const newBtn = document.getElementById("newBtn");
 const newMenu = document.getElementById("newMenu");
+const fileInput = document.getElementById("fileInput");
+const folderInput = document.getElementById("folderInput");
 const pathSpan = document.getElementById("path");
 
 newBtn.onclick = e => {
@@ -163,23 +155,26 @@ function goRoot() {
     loadFiles();
 }
 
-/* Upload single file */
-async function uploadFile(input) {
-    const file = input.files[0];
+/* ---------- FILE UPLOAD ---------- */
+fileInput.onchange = async () => {
+    const file = fileInput.files[0];
     if (!file) return;
 
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("path", currentPath ? `${currentPath}/${file.name}` : file.name);
+
+    if (currentPath) {
+        fd.append("path", `${currentPath}/${file.name}`);
+    }
 
     await fetch("/upload", { method: "POST", body: fd });
-    input.value = "";
+    fileInput.value = "";
     loadFiles();
-}
+};
 
-/* Upload full folder */
-async function uploadFolder(input) {
-    for (let file of input.files) {
+/* ---------- FOLDER UPLOAD ---------- */
+folderInput.onchange = async () => {
+    for (const file of folderInput.files) {
         const fd = new FormData();
         fd.append("file", file);
 
@@ -188,14 +183,14 @@ async function uploadFolder(input) {
             : file.webkitRelativePath;
 
         fd.append("path", fullPath);
-
         await fetch("/upload", { method: "POST", body: fd });
     }
-    input.value = "";
-    loadFiles();
-}
 
-/* Create folder */
+    folderInput.value = "";
+    loadFiles();
+};
+
+/* ---------- CREATE FOLDER ---------- */
 async function createFolder() {
     const name = prompt("Folder name");
     if (!name) return;
@@ -203,17 +198,17 @@ async function createFolder() {
     const fd = new FormData();
     fd.append("file", new Blob([""], { type: "text/plain" }), ".keep");
 
-    const folderPath = currentPath
+    const path = currentPath
         ? `${currentPath}/${name}/.keep`
         : `${name}/.keep`;
 
-    fd.append("path", folderPath);
+    fd.append("path", path);
 
     await fetch("/upload", { method: "POST", body: fd });
     loadFiles();
 }
 
-/* Load files */
+/* ---------- LOAD FILES ---------- */
 async function loadFiles() {
     const res = await fetch(`/files?path=${currentPath}`);
     const data = await res.json();
@@ -262,7 +257,7 @@ function downloadFile(file) {
 
 function downloadFolder(folder) {
     const path = currentPath ? `${currentPath}/${folder}` : folder;
-    window.open(`/download-folder?path=${path}`);
+    window.open(`/download-folder?folder=${path}`);
 }
 
 loadFiles();

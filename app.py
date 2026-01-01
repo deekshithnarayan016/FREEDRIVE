@@ -5,11 +5,7 @@ from flask import (
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from storage import (
-    upload_file,
-    list_files,
-    get_download_url
-)
+from storage import upload_file, list_files, get_download_url
 
 import sqlite3
 import os
@@ -24,13 +20,10 @@ import requests
 app = Flask(__name__)
 print("🚀 Flask app started")
 
-# Azure reverse proxy
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Secret key
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
 
-# Secure cookies (Azure HTTPS)
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
@@ -146,7 +139,7 @@ def upload():
         return jsonify({"error": "Unauthorized"}), 401
 
     file = request.files.get("file")
-    path = request.form.get("path")
+    path = request.form.get("path")  # may be None
 
     if not file:
         return jsonify({"error": "No file"}), 400
@@ -155,12 +148,12 @@ def upload():
     return jsonify({"success": True})
 
 # -----------------------------
-# LIST FILES + FOLDERS (CRITICAL)
+# LIST FILES + FOLDERS
 # -----------------------------
 @app.route("/files")
 def files():
     if not require_login():
-        return jsonify({"files": [], "folders": []})
+        return jsonify({"folders": [], "files": []})
 
     user = session["user"]
     base = f"users/{user}/"
@@ -168,8 +161,8 @@ def files():
     path = request.args.get("path", "").strip("/")
     prefix = base + (path + "/" if path else "")
 
-    files = []
     folders = set()
+    files = []
 
     for blob in list_files(user):
         if not blob.name.startswith(prefix):

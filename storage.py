@@ -1,6 +1,4 @@
 import os
-import io
-import zipfile
 from datetime import datetime, timedelta
 from azure.storage.blob import (
     BlobServiceClient,
@@ -26,7 +24,6 @@ ACCOUNT_KEY = None
 def init_storage():
     """
     Initialize Azure Blob Storage safely.
-    Never crash the app if config is missing.
     """
     global blob_service_client, container_client, ACCOUNT_NAME, ACCOUNT_KEY
 
@@ -46,7 +43,7 @@ def init_storage():
         ACCOUNT_NAME = blob_service_client.account_name
         ACCOUNT_KEY = blob_service_client.credential.account_key
 
-        # Create container if it does not exist
+        # Create container if missing
         try:
             container_client.create_container()
         except Exception:
@@ -63,20 +60,21 @@ init_storage()
 
 
 # -----------------------------
-# Upload File (Files + Folders)
+# Upload File (FILES + FOLDERS)
 # -----------------------------
 def upload_file(file, user: str, path: str | None = None) -> str:
     """
     Uploads a file to Azure Blob Storage.
 
-    - Supports folder uploads via `path`
-    - Enforces per-user isolation
+    - Root upload if `path` is None
+    - Folder upload if `path` is provided
+    - Fully compatible with webkitRelativePath
     """
     if not container_client:
         raise RuntimeError("Storage not initialized")
 
     if path:
-        # Normalize Windows paths → Azure-safe
+        # Normalize path (Windows → URL safe)
         clean_path = path.replace("\\", "/").lstrip("/")
         blob_name = f"users/{user}/{clean_path}"
     else:
@@ -89,7 +87,7 @@ def upload_file(file, user: str, path: str | None = None) -> str:
 
 
 # -----------------------------
-# List Blobs (Raw)
+# List All User Blobs (RAW)
 # -----------------------------
 def list_files(user: str):
     """
@@ -105,7 +103,6 @@ def list_files(user: str):
 
 # -----------------------------
 # Generate Secure Download URL
-# (Single file only)
 # -----------------------------
 def get_download_url(blob_name: str) -> str:
     """
@@ -127,35 +124,3 @@ def get_download_url(blob_name: str) -> str:
         f"https://{ACCOUNT_NAME}.blob.core.windows.net/"
         f"{CONTAINER_NAME}/{blob_name}?{sas_token}"
     )
-
-
-# -----------------------------
-# Zip Folder for Download
-# -----------------------------
-def zip_folder(user: str, folder: str) -> io.BytesIO:
-    """
-    Creates a ZIP of all files inside a folder.
-    Preserves full folder structure.
-    """
-    if not container_client:
-        raise RuntimeError("Storage not initialized")
-
-    folder = folder.strip("/")
-    prefix = f"users/{user}/{folder}/"
-
-    zip_buffer = io.BytesIO()
-
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for blob in container_client.list_blobs(name_starts_with=prefix):
-            if blob.name.endswith(".keep"):
-                continue
-
-            blob_client = container_client.get_blob_client(blob.name)
-            data = blob_client.download_blob().readall()
-
-            # Preserve structure inside ZIP
-            arcname = blob.name.replace(prefix, "", 1)
-            zipf.writestr(arcname, data)
-
-    zip_buffer.seek(0)
-    return zip_buffer
