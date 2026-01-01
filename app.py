@@ -38,8 +38,10 @@ def no_cache(response):
 # -----------------------------
 # DATABASE
 # -----------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = "/home/site/data"
+os.makedirs(BASE_DIR, exist_ok=True)
 DB = os.path.join(BASE_DIR, "users.db")
+
 
 def init_db():
     conn = sqlite3.connect(DB)
