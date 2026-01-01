@@ -1,4 +1,6 @@
 import os
+import io
+import zipfile
 from datetime import datetime, timedelta
 from azure.storage.blob import (
     BlobServiceClient,
@@ -44,6 +46,7 @@ def init_storage():
         ACCOUNT_NAME = blob_service_client.account_name
         ACCOUNT_KEY = blob_service_client.credential.account_key
 
+        # Create container if missing
         try:
             container_client.create_container()
         except Exception:
@@ -60,30 +63,42 @@ init_storage()
 
 
 # -----------------------------
-# Upload File (Files + Folders)
+# Upload File (FILES + FOLDERS)
 # -----------------------------
 def upload_file(file, user: str, path: str | None = None) -> str:
+    """
+    Uploads a file.
+    - Supports folders using `path`
+    - Enforces per-user isolation
+    """
     if not container_client:
         raise RuntimeError("Storage not initialized")
 
-
     if path:
         # Normalize Windows paths → Azure-safe
-        clean_path = path.replace("\\", "/")
+        clean_path = path.replace("\\", "/").lstrip("/")
         blob_name = f"users/{user}/{clean_path}"
     else:
         blob_name = f"users/{user}/{file.filename}"
 
     blob_client = container_client.get_blob_client(blob_name)
-    blob_client.upload_blob(file.stream, overwrite=True)
+
+    blob_client.upload_blob(
+        file.stream,
+        overwrite=True
+    )
 
     return blob_name
 
 
 # -----------------------------
-# List Files (user-isolated)
+# List Blobs (Raw)
 # -----------------------------
 def list_files(user: str):
+    """
+    Returns all blobs for a user (raw blobs).
+    Folder logic is handled in app.py
+    """
     if not container_client:
         return []
 
@@ -96,6 +111,9 @@ def list_files(user: str):
 # (Single file only)
 # -----------------------------
 def get_download_url(blob_name: str) -> str:
+    """
+    Generates a short-lived SAS URL for a single file.
+    """
     if not ACCOUNT_NAME or not ACCOUNT_KEY:
         raise RuntimeError("Storage credentials unavailable")
 
@@ -115,20 +133,32 @@ def get_download_url(blob_name: str) -> str:
 
 
 # -----------------------------
-# List Files in Folder (for ZIP)
+# Zip Folder for Download
 # -----------------------------
-def list_files_in_folder(user: str, folder: str):
+def zip_folder(user: str, folder: str) -> io.BytesIO:
     """
-    Returns all blobs inside a folder (excluding .keep)
+    Creates a ZIP of all files inside a folder.
+    Used by app.py for folder downloads.
     """
     if not container_client:
-        return []
+        raise RuntimeError("Storage not initialized")
+
+    folder = folder.strip("/")
 
     prefix = f"users/{user}/{folder}/"
+    zip_buffer = io.BytesIO()
 
-    blobs = []
-    for blob in container_client.list_blobs(name_starts_with=prefix):
-        if not blob.name.endswith(".keep"):
-            blobs.append(blob)
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for blob in container_client.list_blobs(name_starts_with=prefix):
+            if blob.name.endswith(".keep"):
+                continue
 
-    return blobs
+            blob_client = container_client.get_blob_client(blob.name)
+            data = blob_client.download_blob().readall()
+
+            # Preserve folder structure inside ZIP
+            arcname = blob.name.replace(prefix, "")
+            zipf.writestr(arcname, data)
+
+    zip_buffer.seek(0)
+    return zip_buffer

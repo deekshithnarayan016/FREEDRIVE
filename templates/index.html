@@ -90,6 +90,12 @@ td { padding: 10px; border-bottom: 1px solid #eee; }
     border-radius: 8px;
     cursor: pointer;
 }
+
+.breadcrumb {
+    margin-bottom: 15px;
+    color: #555;
+    cursor: pointer;
+}
 </style>
 </head>
 
@@ -101,6 +107,8 @@ td { padding: 10px; border-bottom: 1px solid #eee; }
 </header>
 
 <div class="container">
+
+<div class="breadcrumb" onclick="goRoot()">🏠 Root <span id="path"></span></div>
 
 <div class="new-wrapper">
     <button class="new-btn" id="newBtn">+ New</button>
@@ -131,6 +139,7 @@ let currentPath = "";
 
 const newBtn = document.getElementById("newBtn");
 const newMenu = document.getElementById("newMenu");
+const pathSpan = document.getElementById("path");
 
 newBtn.onclick = e => {
     e.stopPropagation();
@@ -143,6 +152,10 @@ function logout() {
     window.location.href = "/logout";
 }
 
+function goRoot() {
+    currentPath = "";
+    loadFiles();
+}
 
 /* Upload file */
 async function uploadFile(input) {
@@ -163,7 +176,10 @@ async function uploadFolder(input) {
     for (let file of input.files) {
         const fd = new FormData();
         fd.append("file", file);
-        fd.append("path", file.webkitRelativePath);
+        fd.append("path", currentPath
+            ? `${currentPath}/${file.webkitRelativePath}`
+            : file.webkitRelativePath);
+
         await fetch("/upload", { method: "POST", body: fd });
     }
     input.value = "";
@@ -177,39 +193,47 @@ async function createFolder() {
 
     const fd = new FormData();
     fd.append("file", new Blob([""], { type: "text/plain" }), ".keep");
-    fd.append("path", currentPath ? `${currentPath}/${name}/.keep` : `${name}/.keep`);
+    fd.append("path", currentPath
+        ? `${currentPath}/${name}/.keep`
+        : `${name}/.keep`);
 
     await fetch("/upload", { method: "POST", body: fd });
     loadFiles();
 }
 
-/* Load files */
+/* Load files & folders */
 async function loadFiles() {
     const res = await fetch(`/files?path=${currentPath}`);
-    const items = await res.json();
+    const data = await res.json();
+
+    pathSpan.textContent = currentPath ? " / " + currentPath : "";
 
     const table = document.getElementById("fileTableBody");
     table.innerHTML = "";
 
-    items.forEach(item => {
-        const isFolder = item.endsWith("/");
-
+    data.folders.forEach(folder => {
         table.innerHTML += `
         <tr>
-            <td style="cursor:pointer" onclick="${isFolder ? `openFolder('${item}')` : ""}">
-                ${isFolder ? "📁" : "📄"} ${item}
-            </td>
+            <td style="cursor:pointer" onclick="openFolder('${folder}')">📁 ${folder}</td>
             <td>
-                ${isFolder
-                    ? `<button class="action-btn" onclick="downloadFolder('${item}')">Download</button>`
-                    : `<button class="action-btn" onclick="downloadFile('${item}')">Download</button>`}
+                <button class="action-btn" onclick="downloadFolder('${folder}')">Download</button>
+            </td>
+        </tr>`;
+    });
+
+    data.files.forEach(file => {
+        table.innerHTML += `
+        <tr>
+            <td>📄 ${file}</td>
+            <td>
+                <button class="action-btn" onclick="downloadFile('${file}')">Download</button>
             </td>
         </tr>`;
     });
 }
 
 function openFolder(folder) {
-    currentPath = currentPath ? `${currentPath}/${folder.replace("/", "")}` : folder.replace("/", "");
+    currentPath = currentPath ? `${currentPath}/${folder}` : folder;
     loadFiles();
 }
 
@@ -218,7 +242,7 @@ function downloadFile(file) {
 }
 
 function downloadFolder(folder) {
-    window.open(`/download-folder?path=${currentPath ? currentPath + "/" : ""}${folder}`);
+    window.open(`/download-folder?folder=${currentPath ? currentPath + "/" : ""}${folder}`);
 }
 
 loadFiles();

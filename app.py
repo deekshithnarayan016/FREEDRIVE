@@ -1,23 +1,36 @@
-from flask import Flask, render_template, request, redirect, session, jsonify, send_file
+from flask import (
+    Flask, render_template, request, redirect,
+    session, jsonify, send_file
+)
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
-from storage import upload_file, list_files, get_download_url
+
+from storage import (
+    upload_file,
+    list_files,
+    get_download_url
+)
+
 import sqlite3
 import os
 import re
 import io
 import zipfile
+import requests
 
 # -----------------------------
 # APP SETUP
 # -----------------------------
 app = Flask(__name__)
-print("🚀 Flask app started successfully")
+print("🚀 Flask app started")
 
+# Azure reverse proxy
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
+# Secret key
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
 
+# Secure cookies (Azure HTTPS)
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
@@ -57,12 +70,15 @@ EMAIL_REGEX = r"[^@]+@[^@]+\.[^@]+"
 def is_valid_email(email):
     return re.match(EMAIL_REGEX, email)
 
+def require_login():
+    return "user" in session
+
 # -----------------------------
 # AUTH
 # -----------------------------
 @app.route("/")
 def login_page():
-    if "user" in session:
+    if require_login():
         return redirect("/dashboard")
     return render_template("login.html")
 
@@ -84,7 +100,7 @@ def signup():
         conn.commit()
         conn.close()
     except sqlite3.IntegrityError:
-        return jsonify({"success": False, "error": "Email exists"})
+        return jsonify({"success": False, "error": "Email already exists"})
 
     session["user"] = email
     return jsonify({"success": True})
@@ -117,20 +133,20 @@ def logout():
 # -----------------------------
 @app.route("/dashboard")
 def dashboard():
-    if "user" not in session:
+    if not require_login():
         return redirect("/")
     return render_template("index.html", user=session["user"])
 
 # -----------------------------
-# UPLOAD
+# UPLOAD (FILES + FOLDERS)
 # -----------------------------
 @app.route("/upload", methods=["POST"])
 def upload():
-    if "user" not in session:
+    if not require_login():
         return jsonify({"error": "Unauthorized"}), 401
 
     file = request.files.get("file")
-    path = request.form.get("path")
+    path = request.form.get("path")  # optional (folders)
 
     if not file:
         return jsonify({"error": "No file"}), 400
@@ -139,78 +155,86 @@ def upload():
     return jsonify({"success": True})
 
 # -----------------------------
-# FILE LIST
+# FILE + FOLDER LIST (IMPORTANT)
 # -----------------------------
 @app.route("/files")
 def files():
-    if "user" not in session:
-        return jsonify([])
-
-    blobs = list_files(session["user"])
-    base = f"users/{session['user']}/"
-
-    items = []
-    seen_folders = set()
-
-    for b in blobs:
-        name = b.name.replace(base, "")
-        if name.endswith(".keep"):
-            continue
-
-        if "/" in name:
-            folder = name.split("/")[0]
-            seen_folders.add(folder)
-        else:
-            items.append(name)
-
-    for folder in seen_folders:
-        items.append(folder + "/")
-
-    return jsonify(sorted(items))
-
-# -----------------------------
-# DOWNLOAD FILE OR FOLDER
-# -----------------------------
-@app.route("/download")
-def download():
-    if "user" not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    name = request.args.get("blob")
-    if not name:
-        return jsonify({"error": "Missing name"}), 400
+    if not require_login():
+        return jsonify({"files": [], "folders": []})
 
     user = session["user"]
-    base_path = f"users/{user}/"
+    base = f"users/{user}/"
+    path = request.args.get("path", "").strip("/")
 
-    # -------- FILE DOWNLOAD --------
-    if not name.endswith("/"):
-        blob_path = base_path + name
-        return jsonify({"url": get_download_url(blob_path)})
+    prefix = base + (path + "/" if path else "")
 
-    # -------- FOLDER → ZIP DOWNLOAD --------
-    folder_prefix = base_path + name
+    files = []
+    folders = set()
 
-    blobs = list_files(user)
+    for blob in list_files(user):
+        if not blob.name.startswith(prefix):
+            continue
+
+        rel = blob.name.replace(prefix, "")
+        if not rel or rel.endswith(".keep"):
+            continue
+
+        if "/" in rel:
+            folders.add(rel.split("/")[0])
+        else:
+            files.append(rel)
+
+    return jsonify({
+        "files": sorted(files),
+        "folders": sorted(folders)
+    })
+
+# -----------------------------
+# DOWNLOAD FILE
+# -----------------------------
+@app.route("/download")
+def download_file():
+    if not require_login():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    blob = request.args.get("blob")
+    if not blob:
+        return jsonify({"error": "Missing blob"}), 400
+
+    blob_path = f"users/{session['user']}/{blob}"
+    return jsonify({"url": get_download_url(blob_path)})
+
+# -----------------------------
+# DOWNLOAD FOLDER AS ZIP
+# -----------------------------
+@app.route("/download-folder")
+def download_folder():
+    if not require_login():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    folder = request.args.get("folder", "").strip("/")
+    if not folder:
+        return jsonify({"error": "Missing folder"}), 400
+
+    user = session["user"]
+    base = f"users/{user}/"
+    prefix = f"{base}{folder}/"
+
     zip_buffer = io.BytesIO()
 
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for blob in blobs:
-            if blob.name.startswith(folder_prefix) and not blob.name.endswith(".keep"):
-                relative_path = blob.name.replace(base_path, "")
-                file_url = get_download_url(blob.name)
-
-                # Download blob content
-                import requests
-                content = requests.get(file_url).content
-                zipf.writestr(relative_path, content)
+        for blob in list_files(user):
+            if blob.name.startswith(prefix) and not blob.name.endswith(".keep"):
+                rel = blob.name.replace(base, "")
+                url = get_download_url(blob.name)
+                content = requests.get(url).content
+                zipf.writestr(rel, content)
 
     zip_buffer.seek(0)
 
-    zip_name = name.rstrip("/") + ".zip"
     return send_file(
         zip_buffer,
         mimetype="application/zip",
         as_attachment=True,
-        download_name=zip_name
+        download_name=f"{folder}.zip"
     )
