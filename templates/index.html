@@ -196,7 +196,8 @@ async function createFolder() {
     if (!name) return;
 
     const fd = new FormData();
-    fd.append("file", new Blob([""], { type: "text/plain" }), ".keep");
+    const keepFile = new File([""], ".keep", { type: "text/plain" });
+    fd.append("file", keepFile);
 
     const path = currentPath
         ? `${currentPath}/${name}/.keep`
@@ -208,9 +209,10 @@ async function createFolder() {
     loadFiles();
 }
 
+
 /* ---------- LOAD FILES ---------- */
 async function loadFiles() {
-    const res = await fetch(`/files?path=${currentPath}`);
+    const res = await fetch(`/files?path=${encodeURIComponent(currentPath)}`);
     const data = await res.json();
 
     pathSpan.textContent = currentPath ? " / " + currentPath : "";
@@ -245,6 +247,7 @@ async function loadFiles() {
     });
 }
 
+
 function openFolder(folder) {
     currentPath = currentPath ? `${currentPath}/${folder}` : folder;
     loadFiles();
@@ -257,8 +260,9 @@ function downloadFile(file) {
 
 function downloadFolder(folder) {
     const path = currentPath ? `${currentPath}/${folder}` : folder;
-    window.open(`/download-folder?folder=${path}`);
+    window.open(`/download-folder?path=${encodeURIComponent(path)}`);
 }
+
 
 loadFiles();
 </script>

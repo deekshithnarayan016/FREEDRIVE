@@ -43,6 +43,8 @@ def init_storage():
         ACCOUNT_NAME = blob_service_client.account_name
         ACCOUNT_KEY = blob_service_client.credential.account_key
 
+
+
         # Create container if missing
         try:
             container_client.create_container()
@@ -62,19 +64,17 @@ init_storage()
 # -----------------------------
 # Upload File (FILES + FOLDERS)
 # -----------------------------
-def upload_file(file, user: str, path: str | None = None) -> str:
+def upload_file(file, user: str, path=None) -> str:
     """
     Uploads a file to Azure Blob Storage.
 
-    - Root upload if `path` is None
-    - Folder upload if `path` is provided
-    - Fully compatible with webkitRelativePath
+    - `path` MUST include filename if provided
+    - Used for files AND .keep folder markers
     """
     if not container_client:
         raise RuntimeError("Storage not initialized")
 
     if path:
-        # Normalize path (Windows → URL safe)
         clean_path = path.replace("\\", "/").lstrip("/")
         blob_name = f"users/{user}/{clean_path}"
     else:

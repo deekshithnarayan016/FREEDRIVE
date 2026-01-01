@@ -82,7 +82,7 @@ def signup():
     password = data.get("password")
 
     if not email or not password or not is_valid_email(email):
-        return jsonify({"success": False, "error": "Invalid data"})
+        return jsonify({"success": False})
 
     hashed = generate_password_hash(password)
 
@@ -93,7 +93,7 @@ def signup():
         conn.commit()
         conn.close()
     except sqlite3.IntegrityError:
-        return jsonify({"success": False, "error": "Email already exists"})
+        return jsonify({"success": False})
 
     session["user"] = email
     return jsonify({"success": True})
@@ -114,7 +114,7 @@ def login():
         session["user"] = email
         return jsonify({"success": True})
 
-    return jsonify({"success": False, "error": "Invalid credentials"})
+    return jsonify({"success": False})
 
 @app.route("/logout")
 def logout():
@@ -128,7 +128,7 @@ def logout():
 def dashboard():
     if not require_login():
         return redirect("/")
-    return render_template("index.html", user=session["user"])
+    return render_template("index.html")
 
 # -----------------------------
 # UPLOAD (FILES + FOLDERS)
@@ -139,16 +139,19 @@ def upload():
         return jsonify({"error": "Unauthorized"}), 401
 
     file = request.files.get("file")
-    path = request.form.get("path")  # may be None
+    path = request.form.get("path")
 
     if not file:
         return jsonify({"error": "No file"}), 400
+
+    if path:
+        path = path.replace("\\", "/").lstrip("/")
 
     upload_file(file, session["user"], path)
     return jsonify({"success": True})
 
 # -----------------------------
-# LIST FILES + FOLDERS
+# LIST FILES + FOLDERS (FIXED)
 # -----------------------------
 @app.route("/files")
 def files():
@@ -165,18 +168,19 @@ def files():
     files = []
 
     for blob in list_files(user):
-        if not blob.name.startswith(prefix):
+        name = blob.name
+        if not name.startswith(prefix):
             continue
 
-        rel = blob.name.replace(prefix, "", 1)
+        relative = name[len(prefix):]
 
-        if not rel or rel.endswith(".keep"):
+        if not relative or relative.endswith(".keep"):
             continue
 
-        if "/" in rel:
-            folders.add(rel.split("/")[0])
+        if "/" in relative:
+            folders.add(relative.split("/")[0])
         else:
-            files.append(rel)
+            files.append(relative)
 
     return jsonify({
         "folders": sorted(folders),
@@ -191,7 +195,7 @@ def download_file():
     if not require_login():
         return jsonify({"error": "Unauthorized"}), 401
 
-    blob = request.args.get("blob")
+    blob = request.args.get("blob", "").strip("/")
     if not blob:
         return jsonify({"error": "Missing blob"}), 400
 
@@ -199,7 +203,7 @@ def download_file():
     return jsonify({"url": get_download_url(blob_path)})
 
 # -----------------------------
-# DOWNLOAD FOLDER AS ZIP
+# DOWNLOAD FOLDER AS ZIP (FIXED)
 # -----------------------------
 @app.route("/download-folder")
 def download_folder():
@@ -217,12 +221,13 @@ def download_folder():
     zip_buffer = io.BytesIO()
 
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for blob in list_files(user):
-            if blob.name.startswith(prefix) and not blob.name.endswith(".keep"):
-                rel_path = blob.name.replace(base, "", 1)
-                url = get_download_url(blob.name)
-                content = requests.get(url).content
-                zipf.writestr(rel_path, content)
+    for blob in list_files(user):
+        if blob.name.startswith(prefix) and not blob.name.endswith(".keep"):
+            rel = blob.name[len(prefix):]
+            zip_path = f"{folder}/{rel}"
+            content = requests.get(get_download_url(blob.name)).content
+            zipf.writestr(zip_path, content)
+
 
     zip_buffer.seek(0)
 
