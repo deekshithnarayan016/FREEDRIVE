@@ -283,3 +283,68 @@ def delete_folder():
             delete_blob(blob.name)
 
     return jsonify({"success": True})
+# -----------------------------
+# FORGOT PASSWORD - SEND EMAIL
+# -----------------------------
+@app.route("/forgot-password", methods=["POST"])
+def forgot_password():
+    data = request.get_json()
+    email = data.get("email")
+
+    if not email:
+        return jsonify({"message": "Email required"}), 400
+
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("SELECT email FROM users WHERE email=?", (email,))
+    user = cur.fetchone()
+    conn.close()
+
+    if not user:
+        return jsonify({"message": "If this email exists, a reset link was sent."})
+
+    token = serializer.dumps(email, salt="reset-password")
+    reset_link = request.host_url + f"reset/{token}"
+
+    msg = MIMEText(
+        f"Click the link to reset your password:\n\n{reset_link}\n\n"
+        "If you did not request this, ignore this email."
+    )
+    msg["Subject"] = "Reset Your FREEDRIVE Password"
+    msg["From"] = os.getenv("EMAIL_ADDRESS")
+    msg["To"] = email
+
+    try:
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+        server.login(os.getenv("EMAIL_ADDRESS"), os.getenv("EMAIL_PASSWORD"))
+        server.send_message(msg)
+        server.quit()
+    except Exception as e:
+        print("Email error:", e)
+        return jsonify({"message": "Failed to send email"}), 500
+
+    return jsonify({"message": "Reset link sent to your email."})
+
+# -----------------------------
+# RESET PASSWORD PAGE
+# -----------------------------
+@app.route("/reset/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    try:
+        email = serializer.loads(token, salt="reset-password", max_age=1800)
+    except Exception:
+        return "Invalid or expired link"
+
+    if request.method == "POST":
+        new_password = request.form.get("password")
+        hashed = generate_password_hash(new_password)
+
+        conn = sqlite3.connect(DB)
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET password=? WHERE email=?", (hashed, email))
+        conn.commit()
+        conn.close()
+
+        return redirect("/")
+
+    return render_template("reset_password.html")
