@@ -14,6 +14,11 @@ import io
 import zipfile
 import requests
 
+# 👉 Email + token
+import smtplib
+from email.mime.text import MIMEText
+from itsdangerous import URLSafeTimedSerializer
+
 # -----------------------------
 # APP SETUP
 # -----------------------------
@@ -23,6 +28,8 @@ print("🚀 Flask app started")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
+
+serializer = URLSafeTimedSerializer(app.secret_key)
 
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
