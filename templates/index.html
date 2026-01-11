@@ -90,6 +90,11 @@ td { padding: 10px; border-bottom: 1px solid #eee; }
     padding: 6px 12px;
     border-radius: 6px;
     cursor: pointer;
+    margin-right: 6px;
+}
+
+.delete-btn {
+    background: #e74c3c;
 }
 </style>
 </head>
@@ -220,6 +225,7 @@ async function loadFiles() {
     const table = document.getElementById("fileTableBody");
     table.innerHTML = "";
 
+    // FOLDERS
     data.folders.forEach(folder => {
         table.innerHTML += `
         <tr>
@@ -227,21 +233,20 @@ async function loadFiles() {
                 📁 ${folder}
             </td>
             <td>
-                <button class="action-btn" onclick="downloadFolder('${folder}')">
-                    Download
-                </button>
+                <button class="action-btn" onclick="downloadFolder('${folder}')">Download</button>
+                <button class="action-btn delete-btn" onclick="deleteFolder('${folder}')">Delete</button>
             </td>
         </tr>`;
     });
 
+    // FILES
     data.files.forEach(file => {
         table.innerHTML += `
         <tr>
             <td>📄 ${file}</td>
             <td>
-                <button class="action-btn" onclick="downloadFile('${file}')">
-                    Download
-                </button>
+                <button class="action-btn" onclick="downloadFile('${file}')">Download</button>
+                <button class="action-btn delete-btn" onclick="deleteFile('${file}')">Delete</button>
             </td>
         </tr>`;
     });
@@ -266,12 +271,44 @@ async function downloadFile(file) {
     }
 }
 
-
 function downloadFolder(folder) {
     const path = currentPath ? `${currentPath}/${folder}` : folder;
     window.open(`/download-folder?path=${encodeURIComponent(path)}`);
 }
 
+/* ---------- DELETE FILE ---------- */
+async function deleteFile(file) {
+    if (!confirm("Delete this file permanently?")) return;
+
+    const path = currentPath ? `${currentPath}/${file}` : file;
+
+    const res = await fetch("/delete-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blob: path })
+    });
+
+    const data = await res.json();
+    if (data.success) loadFiles();
+    else alert("Delete failed");
+}
+
+/* ---------- DELETE FOLDER ---------- */
+async function deleteFolder(folder) {
+    if (!confirm("Delete this folder and all files inside?")) return;
+
+    const path = currentPath ? `${currentPath}/${folder}` : folder;
+
+    const res = await fetch("/delete-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path })
+    });
+
+    const data = await res.json();
+    if (data.success) loadFiles();
+    else alert("Delete failed");
+}
 
 loadFiles();
 </script>

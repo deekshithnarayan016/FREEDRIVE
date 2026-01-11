@@ -43,8 +43,6 @@ def init_storage():
         ACCOUNT_NAME = blob_service_client.account_name
         ACCOUNT_KEY = blob_service_client.credential.account_key
 
-
-
         # Create container if missing
         try:
             container_client.create_container()
@@ -124,3 +122,17 @@ def get_download_url(blob_name: str) -> str:
         f"https://{ACCOUNT_NAME}.blob.core.windows.net/"
         f"{CONTAINER_NAME}/{blob_name}?{sas_token}"
     )
+
+
+# -----------------------------
+# Delete Blob
+# -----------------------------
+def delete_blob(blob_name: str):
+    """
+    Deletes a single blob from Azure Storage.
+    """
+    if not container_client:
+        raise RuntimeError("Storage not initialized")
+
+    blob_client = container_client.get_blob_client(blob_name)
+    blob_client.delete_blob()

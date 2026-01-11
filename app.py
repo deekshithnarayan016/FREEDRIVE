@@ -5,7 +5,7 @@ from flask import (
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from storage import upload_file, list_files, get_download_url
+from storage import upload_file, list_files, get_download_url, delete_blob
 
 import sqlite3
 import os
@@ -38,7 +38,6 @@ def no_cache(response):
 # -----------------------------
 # DATABASE
 # -----------------------------
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(BASE_DIR, "users.db")
 
@@ -71,8 +70,6 @@ def require_login():
 # -----------------------------
 # AUTH
 # -----------------------------
-
-# 🔐 ROOT → ALWAYS LOGIN PAGE
 @app.route("/")
 def root():
     return render_template("login.html")
@@ -133,7 +130,7 @@ def dashboard():
     return render_template("index.html")
 
 # -----------------------------
-# UPLOAD (FILES + FOLDERS)
+# UPLOAD
 # -----------------------------
 @app.route("/upload", methods=["POST"])
 def upload():
@@ -237,3 +234,45 @@ def download_folder():
         as_attachment=True,
         download_name=f"{folder}.zip"
     )
+
+# -----------------------------
+# DELETE FILE
+# -----------------------------
+@app.route("/delete-file", methods=["POST"])
+def delete_file():
+    if not require_login():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    blob = data.get("blob", "").strip("/")
+
+    if not blob:
+        return jsonify({"error": "Missing file"}), 400
+
+    blob_path = f"users/{session['user']}/{blob}"
+    delete_blob(blob_path)
+
+    return jsonify({"success": True})
+
+# -----------------------------
+# DELETE FOLDER
+# -----------------------------
+@app.route("/delete-folder", methods=["POST"])
+def delete_folder():
+    if not require_login():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    folder = data.get("path", "").strip("/")
+
+    if not folder:
+        return jsonify({"error": "Missing folder"}), 400
+
+    user = session["user"]
+    prefix = f"users/{user}/{folder}/"
+
+    for blob in list_files(user):
+        if blob.name.startswith(prefix):
+            delete_blob(blob.name)
+
+    return jsonify({"success": True})
