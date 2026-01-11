@@ -18,6 +18,8 @@ import requests
 import smtplib
 from email.mime.text import MIMEText
 from itsdangerous import URLSafeTimedSerializer
+print("EMAIL:", os.getenv("EMAIL_ADDRESS"))
+print("EMAIL PASS EXISTS:", bool(os.getenv("EMAIL_PASSWORD")))
 
 # -----------------------------
 # APP SETUP
