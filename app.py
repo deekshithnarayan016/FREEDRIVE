@@ -290,6 +290,7 @@ def delete_folder():
 # -----------------------------
 @app.route("/forgot-password", methods=["POST"])
 def forgot_password():
+    print("🔥 Forgot password route HIT")
     data = request.get_json()
     email = data.get("email")
 
