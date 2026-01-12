@@ -47,8 +47,7 @@ def no_cache(response):
 # -----------------------------
 # DATABASE
 # -----------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB = os.path.join(BASE_DIR, "users.db")
+DB = "/home/users.db"
 
 
 def init_db():
@@ -318,15 +317,25 @@ def forgot_password():
     msg["To"] = email
 
     try:
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+        print("📧 Connecting to SMTP...")
+        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=20)
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+
+        print("🔐 Logging into Gmail...")
         server.login(os.getenv("EMAIL_ADDRESS"), os.getenv("EMAIL_PASSWORD"))
+
+        print("📨 Sending email...")
         server.send_message(msg)
+
         server.quit()
+        print("✅ Email sent successfully")
+
     except Exception as e:
-        print("Email error:", e)
+        print("❌ EMAIL ERROR:", str(e))
         return jsonify({"message": "Failed to send email"}), 500
 
-    return jsonify({"message": "Reset link sent to your email."})
 
 # -----------------------------
 # RESET PASSWORD PAGE
